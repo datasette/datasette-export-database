@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 from datasette import hookimpl, Response
 from datasette.utils.asgi import asgi_send_file
+import itsdangerous
 import tempfile
 
 
@@ -25,6 +26,7 @@ def register_routes():
         ("^/(?P<database>[^/]+)/-/export-database", export_database),
     ]
 
+
 @hookimpl
 def permission_allowed(action, actor):
     if action == "export-database" and actor and actor.get("id") == "root":
@@ -33,13 +35,22 @@ def permission_allowed(action, actor):
 
 @hookimpl
 async def export_database(datasette, request, send):
-    # TODO: Check for available space
     database = request.url_vars["database"]
     db = datasette.get_database(database)
     db_path = db.path
     if db_path is None:
         # Must be _internal or an in-memory database
-        return Response.text("Database cannot be exported, it does not exist on disk", status=500)
+        return Response.text(
+            "Database cannot be exported, it does not exist on disk", status=403
+        )
+
+    # Check signature
+    signature = request.args.get("s") or ""
+    try:
+        unsigned = datasette.unsign(signature, "export-database")
+    except itsdangerous.exc.BadSignature:
+        return Response.text("Bad signature", status=403)
+
 
     # Generate a unique filename for the new SQLite database in the /tmp directory
     with tempfile.NamedTemporaryFile(
@@ -76,7 +87,7 @@ async def export_database(datasette, request, send):
 
 
 @hookimpl
-def database_actions(datasette, actor, database):
+def database_actions(datasette, actor, database, request):
     async def inner():
         if not await datasette.permission_allowed(
             actor,
@@ -85,13 +96,18 @@ def database_actions(datasette, actor, database):
             default=False,
         ):
             return
-        # TODO: Check for available space
         db = datasette.get_database(database)
         if db.path is None:
             return
+        # Signing with the csrftoken because even anonymous users will have one
+        href = (
+            datasette.urls.database(database)
+            + "/-/export-database?s="
+            + datasette.sign({"csrf": request.scope["csrftoken"]()}, "export-database")
+        )
         return [
             {
-                "href": datasette.urls.database(database) + "/-/export-database",
+                "href": href,
                 "label": "Export this database",
                 "description": "Create and download a snapshot of this SQLite database",
             }
