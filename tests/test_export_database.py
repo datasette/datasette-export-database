@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 import pytest
+import shutil
 import sqlite3
 
 
@@ -44,3 +45,20 @@ async def test_permissions(db_path, tmpdir):
             fp.write(b)
     conn = sqlite3.connect(restored)
     assert conn.execute("select count(*) from big").fetchone()[0] == 1001
+
+
+@pytest.mark.asyncio
+async def test_no_space(db_path, tmpdir, monkeypatch):
+    monkeypatch.setattr(shutil, "disk_usage", lambda x: (100, 50, 20))
+    datasette = Datasette([db_path])
+    cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
+    root_response1 = await datasette.client.get("/data", cookies=cookies)
+    assert "/export-database" in root_response1.text
+    # Now find the signature
+    signature = root_response1.text.split("/export-database?s=")[1].split('"')[0]
+    root_response = await datasette.client.get(
+        "/data/-/export-database?s=" + signature,
+        cookies=cookies,
+    )
+    assert root_response.status_code == 403
+    assert root_response.text == "Not enough space in /tmp to export this database"
