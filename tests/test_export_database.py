@@ -27,6 +27,7 @@ async def test_permissions(db_path, tmpdir):
     # Now get the signed URL
     cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
     root_response1 = await datasette.client.get("/data", cookies=cookies)
+    cookies["ds_csrftoken"] = root_response1.cookies["ds_csrftoken"]
     assert "/export-database" in root_response1.text
     # Now find the signature
     signature = root_response1.text.split("/export-database?s=")[1].split('"')[0]
@@ -53,6 +54,7 @@ async def test_no_space(db_path, tmpdir, monkeypatch):
     datasette = Datasette([db_path])
     cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
     root_response1 = await datasette.client.get("/data", cookies=cookies)
+    cookies["ds_csrftoken"] = root_response1.cookies["ds_csrftoken"]
     assert "/export-database" in root_response1.text
     # Now find the signature
     signature = root_response1.text.split("/export-database?s=")[1].split('"')[0]
@@ -62,3 +64,29 @@ async def test_no_space(db_path, tmpdir, monkeypatch):
     )
     assert root_response.status_code == 403
     assert root_response.text == "Not enough space in /tmp to export this database"
+
+
+@pytest.mark.asyncio
+async def test_bad_csrftoken(db_path):
+    datasette = Datasette([db_path])
+    cookies1 = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
+    cookies2 = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
+    root_response1 = await datasette.client.get("/data", cookies=cookies1)
+    cookies1["ds_csrftoken"] = root_response1.cookies["ds_csrftoken"]
+    root_response2 = await datasette.client.get("/data", cookies=cookies2)
+    cookies2["ds_csrftoken"] = root_response2.cookies["ds_csrftoken"]
+    signature1 = root_response1.text.split("/export-database?s=")[1].split('"')[0]
+    signature2 = root_response1.text.split("/export-database?s=")[1].split('"')[0]
+    # Trying to use signature2 to export database for root1 user will break
+    response = await datasette.client.get(
+        "/data/-/export-database?s=" + signature1,
+        cookies=cookies2,
+    )
+    assert response.status_code == 403
+    assert response.text == "Signature csrftoken did not match"
+    # But signature1 works for root1 user
+    good_response = await datasette.client.get(
+        "/data/-/export-database?s=" + signature1,
+        cookies=cookies1,
+    )
+    assert good_response.status_code == 200

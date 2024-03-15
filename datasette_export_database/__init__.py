@@ -5,6 +5,7 @@ from datasette.utils.asgi import asgi_send_file
 import itsdangerous
 from jinja2.filters import do_filesizeformat
 import pathlib
+import secrets
 import shutil
 import tempfile
 
@@ -56,6 +57,11 @@ async def export_database(datasette, request, send):
         unsigned = datasette.unsign(signature, "export-database")
     except itsdangerous.exc.BadSignature:
         return Response.text("Bad signature", status=403)
+    # csrftoken should match
+    if not secrets.compare_digest(
+        request.cookies.get("ds_csrftoken") or "", unsigned["csrf"]
+    ):
+        return Response.text("Signature csrftoken did not match", status=403)
 
     # Is there enough space in /tmp ?
     db_size_bytes = pathlib.Path(db_path).stat().st_size
