@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from datasette import hookimpl, Response
 from datasette.utils.asgi import asgi_send_file
 import itsdangerous
+from jinja2.filters import do_filesizeformat
 import pathlib
 import shutil
 import tempfile
@@ -121,7 +122,9 @@ def database_actions(datasette, actor, database, request):
             {
                 "href": href,
                 "label": "Export this database",
-                "description": "Create and download a snapshot of this SQLite database",
+                "description": "Create and download a snapshot of this SQLite database ({})".format(
+                    do_filesizeformat(pathlib.Path(db.path).stat().st_size)
+                ),
             }
         ]
 
