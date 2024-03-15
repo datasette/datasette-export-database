@@ -10,6 +10,9 @@ import tempfile
 
 @hookimpl
 def register_permissions(datasette):
+    # Not present in <1.0 so import it here
+    from datasette.permissions import Permission
+
     return [
         Permission(
             name="export-database",
