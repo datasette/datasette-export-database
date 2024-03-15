@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from datasette import hookimpl, Response
 from datasette.utils.asgi import asgi_send_file
 import itsdangerous
+import pathlib
+import shutil
 import tempfile
 
 
@@ -51,6 +53,13 @@ async def export_database(datasette, request, send):
     except itsdangerous.exc.BadSignature:
         return Response.text("Bad signature", status=403)
 
+    # Is there enough space in /tmp ?
+    db_size_bytes = pathlib.Path(db_path).stat().st_size
+    free_tmp_bytes = shutil.disk_usage("/tmp")[2]
+    if free_tmp_bytes < db_size_bytes:
+        return Response.text(
+            "Not enough space in /tmp to export this database", status=403
+        )
 
     # Generate a unique filename for the new SQLite database in the /tmp directory
     with tempfile.NamedTemporaryFile(
