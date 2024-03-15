@@ -1,0 +1,30 @@
+[project]
+name = "datasette-export-database"
+version = "0.1"
+description = "Export a copy of a SQLite database on demand"
+readme = "README.md"
+authors = [{name = "Simon Willison"}]
+license = {text = "Apache-2.0"}
+classifiers=[
+    "Framework :: Datasette",
+    "License :: OSI Approved :: Apache Software License"
+]
+requires-python = ">=3.8"
+dependencies = [
+    "datasette"
+]
+
+[project.urls]
+Homepage = "https://github.com/datasette/datasette-export-database"
+Changelog = "https://github.com/datasette/datasette-export-database/releases"
+Issues = "https://github.com/datasette/datasette-export-database/issues"
+CI = "https://github.com/datasette/datasette-export-database/actions"
+
+[project.entry-points.datasette]
+export_database = "datasette_export_database"
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-asyncio"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
