@@ -46,9 +46,7 @@ def permission_allowed(action, actor):
 
 @hookimpl
 def startup(datasette):
-    datasette._datasette_export_database_cleanup_task = asyncio.create_task(
-        cleanup_task()
-    )
+    cleanup_task_sync()
 
 
 def cleanup_task_sync():
@@ -59,14 +57,6 @@ def cleanup_task_sync():
         age_in_seconds = time.time() - file.stat().st_mtime
         if age_in_seconds > 3600:
             file.unlink()
-
-
-async def cleanup_task():
-    # Once an hour scans /tmp for TMP_PREFIX files that were created more than an hour ago
-    while True:
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, cleanup_task_sync)
-        await asyncio.sleep(60 * 60)
 
 
 @hookimpl
