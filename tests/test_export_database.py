@@ -28,6 +28,7 @@ def db_path(tmp_path_factory):
 @pytest.mark.asyncio
 async def test_permissions_and_test_fetch(db_path, tmpdir):
     datasette = Datasette([db_path])
+    datasette.root_enabled = True
     anon_response1 = await datasette.client.get("/data/-/export-database")
     assert anon_response1.status_code == 403
     anon_response2 = await datasette.client.get("/data")
@@ -76,6 +77,7 @@ async def test_permissions_and_test_fetch(db_path, tmpdir):
 async def test_no_space(db_path, tmpdir, monkeypatch):
     monkeypatch.setattr(shutil, "disk_usage", lambda x: (100, 50, 20))
     datasette = Datasette([db_path])
+    datasette.root_enabled = True
     cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
     root_response1 = await datasette.client.get("/data", cookies=cookies)
     cookies["ds_csrftoken"] = root_response1.cookies["ds_csrftoken"]
@@ -118,6 +120,7 @@ async def test_cleans_up_stale_tmp_files_on_startup(db_path):
 @pytest.mark.asyncio
 async def test_bad_csrftoken(db_path):
     datasette = Datasette([db_path])
+    datasette.root_enabled = True
     cookies1 = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
     cookies2 = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
     root_response1 = await datasette.client.get("/data", cookies=cookies1)

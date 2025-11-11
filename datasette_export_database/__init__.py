@@ -1,6 +1,8 @@
 import asyncio
 from datetime import datetime, timezone
 from datasette import hookimpl, Response
+from datasette.permissions import Action
+from datasette.resources import DatabaseResource
 from datasette.utils.asgi import asgi_send_file
 import itsdangerous
 from jinja2.filters import do_filesizeformat
@@ -15,18 +17,12 @@ tmp_dir = tempfile.gettempdir()
 
 
 @hookimpl
-def register_permissions(datasette):
-    # Not present in <1.0 so import it here
-    from datasette.permissions import Permission
-
+def register_actions(datasette):
     return [
-        Permission(
+        Action(
             name="export-database",
-            abbr=None,
             description="Export snapshots of the database",
-            takes_database=True,
-            takes_resource=False,
-            default=False,
+            resource_class=DatabaseResource,
         )
     ]
 
@@ -36,12 +32,6 @@ def register_routes():
     return [
         ("^/(?P<database>[^/]+)/-/export-database", export_database),
     ]
-
-
-@hookimpl
-def permission_allowed(action, actor):
-    if action == "export-database" and actor and actor.get("id") == "root":
-        return True
 
 
 @hookimpl
@@ -135,12 +125,12 @@ async def export_database(datasette, request, send):
 @hookimpl
 def database_actions(datasette, actor, database, request):
     async def inner():
-        if not await datasette.permission_allowed(
-            actor,
-            "export-database",
-            resource=database,
-            default=False,
-        ):
+        allowed = await datasette.allowed(
+            actor=actor,
+            action="export-database",
+            resource=DatabaseResource(database),
+        )
+        if not allowed:
             return
         db = datasette.get_database(database)
         if db.path is None:
