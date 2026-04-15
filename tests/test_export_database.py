@@ -118,8 +118,20 @@ async def test_cleans_up_stale_tmp_files_on_startup(db_path):
 
 
 @pytest.mark.asyncio
+async def test_anonymous_with_permission(db_path):
+    # When export-database is granted to anon, the link is shown with a
+    # signature carrying actor_id=None, and any anonymous request can use it.
+    datasette = Datasette([db_path], config={"permissions": {"export-database": True}})
+    await datasette.invoke_startup()
+    page = await datasette.client.get("/data")
+    assert "/export-database" in page.text
+    signature = page.text.split("/export-database?s=")[1].split('"')[0]
+    response = await datasette.client.get("/data/-/export-database?s=" + signature)
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_signature_tied_to_actor(db_path):
-    # Needs an actor-permissions plugin so a non-root user can see the page.
     # Use root's signed URL but send it with a different actor cookie.
     datasette = Datasette([db_path])
     datasette.root_enabled = True
