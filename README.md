@@ -24,3 +24,7 @@ To set up this plugin locally, first checkout the code. Then run the tests with 
 cd datasette-export-database
 uv run pytest
 ```
+To try the plugin out (with the permission set for every user):
+```bash
+uv run datasette test.db --create -s permissions.export-database true
+```
