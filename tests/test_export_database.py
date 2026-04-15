@@ -29,6 +29,7 @@ def db_path(tmp_path_factory):
 async def test_permissions_and_test_fetch(db_path, tmpdir):
     datasette = Datasette([db_path])
     datasette.root_enabled = True
+    await datasette.invoke_startup()
     anon_response1 = await datasette.client.get("/data/-/export-database")
     assert anon_response1.status_code == 403
     anon_response2 = await datasette.client.get("/data")
@@ -36,7 +37,6 @@ async def test_permissions_and_test_fetch(db_path, tmpdir):
     # Now get the signed URL
     cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
     root_response1 = await datasette.client.get("/data", cookies=cookies)
-    cookies["ds_csrftoken"] = root_response1.cookies["ds_csrftoken"]
     assert "/export-database" in root_response1.text
     # Now find the signature
     signature = root_response1.text.split("/export-database?s=")[1].split('"')[0]
@@ -78,9 +78,9 @@ async def test_no_space(db_path, tmpdir, monkeypatch):
     monkeypatch.setattr(shutil, "disk_usage", lambda x: (100, 50, 20))
     datasette = Datasette([db_path])
     datasette.root_enabled = True
+    await datasette.invoke_startup()
     cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
     root_response1 = await datasette.client.get("/data", cookies=cookies)
-    cookies["ds_csrftoken"] = root_response1.cookies["ds_csrftoken"]
     assert "/export-database" in root_response1.text
     # Now find the signature
     signature = root_response1.text.split("/export-database?s=")[1].split('"')[0]
@@ -112,33 +112,32 @@ async def test_cleans_up_stale_tmp_files_on_startup(db_path):
     assert two_minutes_ago.exists()
     # Starting Datasette should delete one but not the other
     datasette = Datasette()
-    await datasette.client.get("/")
+    await datasette.invoke_startup()
     assert not two_hours_ago.exists()
     assert two_minutes_ago.exists()
 
 
 @pytest.mark.asyncio
-async def test_bad_csrftoken(db_path):
+async def test_signature_tied_to_actor(db_path):
+    # Needs an actor-permissions plugin so a non-root user can see the page.
+    # Use root's signed URL but send it with a different actor cookie.
     datasette = Datasette([db_path])
     datasette.root_enabled = True
-    cookies1 = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
-    cookies2 = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
-    root_response1 = await datasette.client.get("/data", cookies=cookies1)
-    cookies1["ds_csrftoken"] = root_response1.cookies["ds_csrftoken"]
-    root_response2 = await datasette.client.get("/data", cookies=cookies2)
-    cookies2["ds_csrftoken"] = root_response2.cookies["ds_csrftoken"]
-    signature1 = root_response1.text.split("/export-database?s=")[1].split('"')[0]
-    signature2 = root_response1.text.split("/export-database?s=")[1].split('"')[0]
-    # Trying to use signature2 to export database for root1 user will break
+    await datasette.invoke_startup()
+    root_cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
+    other_cookies = {"ds_actor": datasette.sign({"a": {"id": "other"}}, "actor")}
+    root_response = await datasette.client.get("/data", cookies=root_cookies)
+    signature = root_response.text.split("/export-database?s=")[1].split('"')[0]
+    # A different actor cannot use root's signed URL
     response = await datasette.client.get(
-        "/data/-/export-database?s=" + signature1,
-        cookies=cookies2,
+        "/data/-/export-database?s=" + signature,
+        cookies=other_cookies,
     )
     assert response.status_code == 403
-    assert response.text == "Signature csrftoken did not match"
-    # But signature1 works for root1 user
+    assert response.text == "Signature actor did not match"
+    # But root can
     good_response = await datasette.client.get(
-        "/data/-/export-database?s=" + signature1,
-        cookies=cookies1,
+        "/data/-/export-database?s=" + signature,
+        cookies=root_cookies,
     )
     assert good_response.status_code == 200

@@ -7,10 +7,11 @@ from datasette.utils.asgi import asgi_send_file
 import itsdangerous
 from jinja2.filters import do_filesizeformat
 import pathlib
-import secrets
 import shutil
 import tempfile
 import time
+
+SIGNED_URL_TTL = 3600
 
 TMP_PREFIX = "datasette-export-database-"
 tmp_dir = tempfile.gettempdir()
@@ -66,11 +67,13 @@ async def export_database(datasette, request, send):
         unsigned = datasette.unsign(signature, "export-database")
     except itsdangerous.exc.BadSignature:
         return Response.text("Bad signature", status=403)
-    # csrftoken should match
-    if not secrets.compare_digest(
-        request.cookies.get("ds_csrftoken") or "", unsigned["csrf"]
-    ):
-        return Response.text("Signature csrftoken did not match", status=403)
+    if unsigned.get("exp", 0) < time.time():
+        return Response.text("Signature expired", status=403)
+    actor_id = (request.actor or {}).get("id")
+    if actor_id != unsigned.get("actor_id"):
+        return Response.text("Signature actor did not match", status=403)
+    if unsigned.get("database") != database:
+        return Response.text("Signature database did not match", status=403)
 
     # Is there enough space in /tmp ?
     db_size_bytes = pathlib.Path(db_path).stat().st_size
@@ -135,11 +138,18 @@ def database_actions(datasette, actor, database, request):
         db = datasette.get_database(database)
         if db.path is None:
             return
-        # Signing with the csrftoken because even anonymous users will have one
+        # Sign a short-lived URL tied to the current actor
         href = (
             datasette.urls.database(database)
             + "/-/export-database?s="
-            + datasette.sign({"csrf": request.scope["csrftoken"]()}, "export-database")
+            + datasette.sign(
+                {
+                    "actor_id": (actor or {}).get("id"),
+                    "database": database,
+                    "exp": int(time.time()) + SIGNED_URL_TTL,
+                },
+                "export-database",
+            )
         )
         return [
             {
