@@ -1,6 +1,6 @@
 [project]
 name = "datasette-export-database"
-version = "0.3a1"
+version = "0.3a2"
 description = "Export a copy of a SQLite database on demand"
 readme = "README.md"
 authors = [{name = "Simon Willison"}]
@@ -10,7 +10,7 @@ classifiers=[
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "datasette==1.0a27"
+    "datasette>=1.0a27"
 ]
 
 [project.urls]
